@@ -825,10 +825,6 @@ function tabMeds(d, t) {
     if (!d.meds.length) {
         out += `<div class="empty" style="padding:16px 0">Ei lääkityksiä lisätty</div>`;
     } else {
-        const medOpts = d.medPicks.length
-            ? d.medPicks.map((p,i) => `<option value="${i}">${h(p)}</option>`).join('')
-            : '';
-
         out += d.meds.map((m, i) => {
             const done = m.confirmedDate === t;
             return `
@@ -841,11 +837,14 @@ function tabMeds(d, t) {
         }).join('');
     }
 
+    const hasMedPicks = d.medPicks.length > 0;
     out += `
         <hr class="divider">
         <div style="font-size:0.9rem;font-weight:600;margin-bottom:10px">Lisää uusi lääkitys:</div>
+        ${hasMedPicks ? `<datalist id="med-name-list">${d.medPicks.map(p=>`<option value="${h(p)}">`).join('')}</datalist>` : ''}
         <div class="add-row" style="flex-wrap:wrap">
-            <input type="text" id="med-name" placeholder="Lääkkeen nimi" style="flex:1;min-width:130px">
+            <input type="text" id="med-name" placeholder="Lääkkeen nimi" style="flex:1;min-width:130px"
+                ${hasMedPicks ? 'list="med-name-list"' : ''}>
             <input type="number" id="med-amount" placeholder="Määrä" min="0.1" step="0.1" style="width:85px">
             <select id="med-unit">
                 <option>tabletti</option><option>ml</option><option>mg</option>
