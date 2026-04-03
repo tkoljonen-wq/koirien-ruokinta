@@ -554,13 +554,21 @@ function removeFoodFromMeal(mealId, foodIdx) {
 
 function addMed() {
     const d = dog(); if (!d) return;
-    const name = document.getElementById('med-name')?.value?.trim();
+    const sel = document.getElementById('med-name');
+    const customInp = document.getElementById('med-name-custom');
+    let name;
+    if (sel && sel.tagName === 'SELECT') {
+        name = sel.value === '__custom__' ? customInp?.value?.trim() : sel.value?.trim();
+    } else {
+        name = sel?.value?.trim();
+    }
     const amount = document.getElementById('med-amount')?.value?.trim();
     const unit = document.getElementById('med-unit')?.value;
     const time = document.getElementById('med-time')?.value;
     if (!name || !amount) { toast('Syötä lääkkeen nimi ja määrä'); return; }
     d.meds.push({ id: uid(), name, amount, unit, time, confirmedDate: null, confirmedTime: null });
-    document.getElementById('med-name').value = '';
+    if (sel && sel.tagName === 'SELECT') { sel.value = ''; if (customInp) { customInp.value = ''; customInp.style.display = 'none'; } }
+    else if (sel) sel.value = '';
     document.getElementById('med-amount').value = '';
     document.getElementById('med-time').value = '';
     save(); renderMain();
@@ -841,10 +849,17 @@ function tabMeds(d, t) {
     out += `
         <hr class="divider">
         <div style="font-size:0.9rem;font-weight:600;margin-bottom:10px">Lisää uusi lääkitys:</div>
-        ${hasMedPicks ? `<datalist id="med-name-list">${d.medPicks.map(p=>`<option value="${h(p)}">`).join('')}</datalist>` : ''}
         <div class="add-row" style="flex-wrap:wrap">
-            <input type="text" id="med-name" placeholder="Lääkkeen nimi" style="flex:1;min-width:130px"
-                ${hasMedPicks ? 'list="med-name-list"' : ''}>
+            ${hasMedPicks
+                ? `<select id="med-name" style="flex:1;min-width:130px"
+                      onchange="document.getElementById('med-name-custom').style.display=this.value==='__custom__'?'':'none'">
+                    <option value="">-- Valitse lääke --</option>
+                    ${d.medPicks.map(p=>`<option value="${h(p)}">${h(p)}</option>`).join('')}
+                    <option value="__custom__">-- Kirjoita itse --</option>
+                   </select>
+                   <input type="text" id="med-name-custom" placeholder="Lääkkeen nimi" style="flex:1;min-width:130px;display:none">`
+                : `<input type="text" id="med-name" placeholder="Lääkkeen nimi" style="flex:1;min-width:130px">`
+            }
             <input type="number" id="med-amount" placeholder="Määrä" min="0.1" step="0.1" style="width:85px">
             <select id="med-unit">
                 <option>tabletti</option><option>ml</option><option>mg</option>
