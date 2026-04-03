@@ -879,7 +879,7 @@ function tabMeals(d) {
         return out;
     }
 
-    const foodOpts = d.foodPicks.map((p,i) => `<option value="${i}">${h(p)}</option>`).join('');
+    const foodOpts = d.foodPicks.map(p => `<option value="${h(p)}">${h(p)}</option>`).join('');
     const noFoodPicks = !d.foodPicks.length;
 
     out += d.meals.map((m, mi) => `
@@ -1044,6 +1044,9 @@ initFirebase();
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+    navigator.serviceWorker.addEventListener('message', e => {
+        if (e.data?.type === 'SW_UPDATED') location.reload();
     });
 }
 </script>

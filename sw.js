@@ -1,4 +1,4 @@
-const CACHE = 'koirat-v5';
+const CACHE = 'koirat-v7';
 const FILES = [
   './index.html',
   './manifest.json',
@@ -14,15 +14,15 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll())
+      .then(clients => clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' })))
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', e => {
-  // HTML: network first, cache as fallback
   if (e.request.mode === 'navigate' || e.request.url.endsWith('.html')) {
     e.respondWith(
       fetch(e.request)
@@ -35,7 +35,6 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-  // Others: cache first
   e.respondWith(
     caches.match(e.request).then(r => r || fetch(e.request))
   );
