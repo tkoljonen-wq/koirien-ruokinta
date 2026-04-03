@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Koirien Ruokinta &amp; Lääkitys</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a365d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Koirat">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f4f8;
+            color: #2d3748;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ─── Header ─── */
+        .header {
+            background: #1a365d;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+            flex-shrink: 0;
+        }
+        .header h1 { font-size: 1.2rem; font-weight: 600; }
+        .header-date { font-size: 0.82rem; color: #90cdf4; }
+        .header-right {
+            margin-left: auto; display: flex; flex-direction: column;
+            align-items: flex-end; gap: 2px;
+        }
+        .code-row { display: flex; align-items: center; gap: 6px; }
+        .code-badge {
+            font-family: monospace; font-size: 1rem; font-weight: 700;
+            letter-spacing: 3px; color: #fefcbf;
+            background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px;
+        }
+        .code-btn {
+            background: rgba(255,255,255,0.12); border: none; border-radius: 5px;
+            cursor: pointer; padding: 3px 7px; font-size: 0.85rem; color: white;
+            transition: background 0.15s;
+        }
+        .code-btn:hover { background: rgba(255,255,255,0.25); }
+
+        /* ─── Layout ─── */
+        .layout { display: flex; flex: 1; overflow: hidden; }
+
+        /* ─── Sidebar ─── */
+        .sidebar {
+            width: 220px;
+            background: #2d3748;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        .sidebar-title {
+            padding: 14px 16px;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #a0aec0;
+            border-bottom: 1px solid #4a5568;
+            flex-shrink: 0;
+        }
+        .dog-list { flex: 1; overflow-y: auto; }
+        .dog-item {
+            padding: 11px 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #3d4a5c;
+            transition: background 0.15s;
+            position: relative;
+        }
+        .dog-item:hover { background: #3d4a5c; }
+        .dog-item.active { background: #2b6cb0; }
+        .dog-name { flex: 1; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .delete-dog-btn {
+            background: none; border: none; color: #fc8181;
+            cursor: pointer; font-size: 0.9rem; padding: 2px 5px;
+            border-radius: 3px; opacity: 0; transition: opacity 0.15s; flex-shrink: 0;
+        }
+        .dog-item:hover .delete-dog-btn { opacity: 1; }
+
+        .add-dog-form {
+            padding: 12px;
+            border-top: 1px solid #4a5568;
+            flex-shrink: 0;
+        }
+        .add-dog-form input {
+            width: 100%; padding: 7px 10px;
+            border-radius: 6px; border: 1px solid #4a5568;
+            background: #3d4a5c; color: white; font-size: 0.88rem; margin-bottom: 8px;
+        }
+        .add-dog-form input::placeholder { color: #718096; }
+        .add-dog-form button {
+            width: 100%; padding: 8px;
+            background: #48bb78; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 500;
+        }
+        .add-dog-form button:hover { background: #38a169; }
+
+        /* ─── Main content ─── */
+        .main { flex: 1; overflow-y: auto; padding: 20px; }
+
+        .welcome {
+            display: flex; align-items: center; justify-content: center;
+            height: 100%; color: #718096; font-size: 1.05rem; text-align: center;
+        }
+
+        /* ─── Dog header ─── */
+        .dog-page-title { font-size: 1.4rem; font-weight: 700; color: #1a365d; margin-bottom: 3px; }
+        .dog-page-sub { font-size: 0.87rem; color: #718096; margin-bottom: 18px; }
+
+        /* ─── Tabs ─── */
+        .tabs {
+            display: flex; gap: 2px;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 9px 18px; border: none; background: none;
+            cursor: pointer; font-size: 0.9rem; color: #718096;
+            border-bottom: 2px solid transparent; margin-bottom: -2px;
+            transition: all 0.15s;
+        }
+        .tab-btn.active { color: #2b6cb0; border-bottom-color: #2b6cb0; font-weight: 600; }
+        .tab-btn:hover:not(.active) { color: #4a5568; }
+
+        /* ─── Cards ─── */
+        .card {
+            background: white; border-radius: 10px;
+            padding: 18px; margin-bottom: 14px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+        }
+        .card-title {
+            font-size: 0.95rem; font-weight: 600;
+            color: #2d3748; margin-bottom: 14px;
+        }
+
+        /* ─── Today view ─── */
+        .today-card {
+            border-left: 4px solid #e2e8f0;
+        }
+        .today-card.pending { border-left-color: #f6ad55; }
+        .today-card.done    { border-left-color: #68d391; background: #f0fff4; }
+
+        .item-header {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+        }
+        .item-time {
+            font-size: 1.25rem; font-weight: 700;
+            color: #2d3748; min-width: 55px;
+        }
+        .item-title { flex: 1; font-size: 0.97rem; font-weight: 600; }
+        .confirm-btn {
+            padding: 7px 15px; border-radius: 20px;
+            cursor: pointer; font-size: 0.82rem; font-weight: 500;
+            transition: all 0.15s; border: 1px solid;
+            white-space: nowrap;
+        }
+        .confirm-btn.pending {
+            background: #ebf8ff; color: #2b6cb0; border-color: #bee3f8;
+        }
+        .confirm-btn.pending:hover { background: #bee3f8; }
+        .confirm-btn.done {
+            background: #f0fff4; color: #276749; border-color: #c6f6d5;
+        }
+
+        .detail-list { margin-left: 67px; font-size: 0.88rem; color: #4a5568; }
+        .detail-row { padding: 2px 0; display: flex; gap: 6px; align-items: baseline; }
+        .detail-row::before { content: '•'; color: #a0aec0; flex-shrink: 0; }
+        .no-items-note { margin-left: 67px; font-size: 0.83rem; color: #a0aec0; font-style: italic; }
+
+        /* ─── Section title ─── */
+        .section-label {
+            font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px;
+            color: #718096; font-weight: 600; margin: 22px 0 10px;
+        }
+        .section-label:first-child { margin-top: 0; }
+
+        /* ─── Meals setup ─── */
+        .counter-wrap { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+        .counter-wrap label { font-weight: 500; color: #4a5568; font-size: 0.92rem; }
+        .counter-btns { display: flex; align-items: center; gap: 10px; }
+        .ctr-btn {
+            width: 30px; height: 30px; border-radius: 50%;
+            border: 1px solid #e2e8f0; background: white;
+            cursor: pointer; font-size: 1.2rem; color: #4a5568;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .ctr-btn:hover { background: #f7fafc; }
+        .ctr-val { font-size: 1.3rem; font-weight: 700; color: #2d3748; min-width: 28px; text-align: center; }
+
+        .meal-block {
+            border: 1px solid #e2e8f0; border-radius: 8px;
+            padding: 15px; margin-bottom: 12px;
+        }
+        .meal-block-header {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+        }
+        .meal-num {
+            width: 28px; height: 28px; border-radius: 50%;
+            background: #2b6cb0; color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.85rem; flex-shrink: 0;
+        }
+
+        .food-row {
+            display: flex; gap: 8px; align-items: center;
+            margin-bottom: 7px; padding: 8px 10px;
+            background: #f7fafc; border-radius: 6px; flex-wrap: wrap;
+        }
+        .food-row-name { flex: 1; font-size: 0.9rem; min-width: 100px; }
+        .food-row-amount { color: #4a5568; font-size: 0.9rem; white-space: nowrap; }
+
+        .med-row {
+            display: flex; gap: 8px; align-items: center;
+            margin-bottom: 7px; padding: 8px 10px;
+            background: #faf5ff; border-radius: 6px;
+            border: 1px solid #e9d8fd; flex-wrap: wrap;
+        }
+        .med-row-name { flex: 1; font-size: 0.9rem; min-width: 100px; }
+        .med-row-amount { color: #6b46c1; font-size: 0.9rem; white-space: nowrap; }
+
+        .add-row {
+            display: flex; gap: 7px; align-items: center;
+            margin-top: 8px; flex-wrap: wrap;
+        }
+
+        /* ─── Inputs / Buttons ─── */
+        input[type="text"], input[type="number"], input[type="time"], select {
+            padding: 7px 10px; border: 1px solid #e2e8f0;
+            border-radius: 6px; font-size: 0.88rem;
+            color: #2d3748; background: white;
+        }
+        input:focus, select:focus {
+            outline: none; border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66,153,225,0.15);
+        }
+        .btn {
+            padding: 7px 14px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 0.85rem; font-weight: 500;
+            transition: all 0.15s; white-space: nowrap;
+        }
+        .btn-primary { background: #4299e1; color: white; }
+        .btn-primary:hover { background: #3182ce; }
+        .btn-success { background: #48bb78; color: white; }
+        .btn-success:hover { background: #38a169; }
+        .btn-danger { background: #fff5f5; color: #e53e3e; border: 1px solid #fed7d7; }
+        .btn-danger:hover { background: #fed7d7; }
+        .btn-sm { padding: 5px 9px; font-size: 0.78rem; }
+
+        /* ─── Quick picks ─── */
+        .picks-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .pick-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 11px; border-radius: 20px; font-size: 0.85rem;
+        }
+        .pick-chip.food { background: #ebf8ff; border: 1px solid #bee3f8; color: #2b6cb0; }
+        .pick-chip.med  { background: #faf5ff; border: 1px solid #d6bcfa; color: #553c9a; }
+        .pick-chip button {
+            background: none; border: none; cursor: pointer;
+            font-size: 0.85rem; padding: 0; line-height: 1; color: inherit; opacity: 0.5;
+        }
+        .pick-chip button:hover { opacity: 1; color: #e53e3e; }
+        .no-picks { color: #a0aec0; font-size: 0.85rem; font-style: italic; }
+
+        /* ─── Divider ─── */
+        .divider { border: none; border-top: 1px solid #e2e8f0; margin: 14px 0; }
+
+        /* ─── Empty state ─── */
+        .empty { text-align: center; padding: 30px; color: #a0aec0; font-size: 0.9rem; }
+
+        /* ─── Toast ─── */
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            background: #2d3748; color: white;
+            padding: 11px 18px; border-radius: 8px; font-size: 0.88rem;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+            transform: translateY(80px); opacity: 0;
+            transition: all 0.3s; z-index: 9999;
+        }
+        .toast.visible { transform: translateY(0); opacity: 1; }
+        .toast.ok { background: #276749; }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 560px) {
+            .sidebar { width: 170px; }
+            .detail-list, .no-items-note { margin-left: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <span style="font-size:1.4rem">🐕</span>
+    <h1>Koirien Ruokinta &amp; Lääkitys</h1>
+    <div class="header-right">
+        <span class="header-date" id="hdr-date"></span>
+        <div class="code-row">
+            <span style="font-size:0.72rem;color:#90cdf4">Koodi:</span>
+            <span class="code-badge" id="hdr-code">------</span>
+            <button class="code-btn" onclick="copyCode()" title="Kopioi koodi toiselle käyttäjälle">📋</button>
+            <button class="code-btn" onclick="changeCode()" title="Syötä toisen käyttäjän koodi">🔗</button>
+        </div>
+    </div>
+</div>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-title">Koirat</div>
+        <div class="dog-list" id="dog-list"></div>
+        <div class="add-dog-form">
+            <input type="text" id="new-dog-input" placeholder="Koiran nimi..." maxlength="30">
+            <button onclick="addDog()">+ Lisää koira</button>
+        </div>
+    </aside>
+
+    <main class="main" id="main"></main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════
+//  FIREBASE CONFIG — täytä omat arvosi
+// ═══════════════════════════════════════
+
+const FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyAmzEiWZycYvaEZRvz3QCyn3QwehXAg0_M",
+    authDomain:        "koirien-ruokinta.firebaseapp.com",
+    projectId:         "koirien-ruokinta",
+    storageBucket:     "koirien-ruokinta.firebasestorage.app",
+    messagingSenderId: "92329053084",
+    appId:             "1:92329053084:web:446fc3d4b5345df243d659"
+};
+
+// ═══════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════
+
+let state = { dogs: [], sel: null };
+let activeTab = 'today';
+let _listener = null;
+let db;
+
+function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+function today() {
+    return new Date().toISOString().slice(0, 10);
+}
+function nowTime() {
+    return new Date().toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+}
+function dog() {
+    return state.dogs.find(d => d.id === state.sel) || null;
+}
+
+// ─── Jaettava koodi ─────────────────────
+function genCode() {
+    const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from({length: 6}, () => c[Math.floor(Math.random() * c.length)]).join('');
+}
+
+let KOODI = localStorage.getItem('kotikoodi') || genCode();
+localStorage.setItem('kotikoodi', KOODI);
+
+function updateCodeDisplay() {
+    const el = document.getElementById('hdr-code');
+    if (el) el.textContent = KOODI;
+}
+
+function copyCode() {
+    navigator.clipboard.writeText(KOODI).then(() => toast('Koodi kopioitu: ' + KOODI, true));
+}
+
+function changeCode() {
+    const syote = prompt('Syötä toisen käyttäjän koodi:', '');
+    if (!syote) return;
+    const uusi = syote.trim().toUpperCase();
+    if (uusi.length < 3) { toast('Liian lyhyt koodi'); return; }
+    KOODI = uusi;
+    localStorage.setItem('kotikoodi', KOODI);
+    updateCodeDisplay();
+    startListener();
+    toast('Yhdistetty koodilla: ' + KOODI, true);
+}
+
+// ─── Firebase ───────────────────────────
+function docRef() {
+    return db.collection('kodit').doc(KOODI);
+}
+
+async function save() {
+    try {
+        await docRef().set({
+            dogs: state.dogs,
+            sel:  state.sel,
+            ts:   new Date().toISOString()
+        });
+    } catch(e) {
+        toast('Tallennusvirhe: ' + e.message);
+    }
+}
+
+function startListener() {
+    if (_listener) _listener();
+    updateCodeDisplay();
+    _listener = docRef().onSnapshot(snap => {
+        if (snap.exists) {
+            const d = snap.data();
+            state.dogs = d.dogs || [];
+            state.sel  = d.sel  || null;
+        } else {
+            state.dogs = [];
+            state.sel  = null;
+        }
+        render();
+    }, err => toast('Yhteysvirhe: ' + err.message));
+}
+
+function initFirebase() {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    startListener();
+}
+
+// ═══════════════════════════════════════
+//  DOG CRUD
+// ═══════════════════════════════════════
+
+function addDog() {
+    const inp = document.getElementById('new-dog-input');
+    const name = inp.value.trim();
+    if (!name) return;
+    const d = {
+        id: uid(), name,
+        foodPicks: ['Kuivaruoka', 'Märkäruoka', 'Kana', 'Naudanliha', 'Riisi'],
+        medPicks: [],
+        meals: [
+            newMeal('Aamupala', '08:00'),
+            newMeal('Illallinen', '17:00')
+        ],
+        meds: []
+    };
+    state.dogs.push(d);
+    state.sel = d.id;
+    inp.value = '';
+    save(); render();
+    toast(`${name} lisätty!`, true);
+}
+
+function newMeal(name, time) {
+    return { id: uid(), name, time, foods: [], confirmedDate: null, confirmedTime: null };
+}
+
+function deleteDog(id) {
+    if (!confirm('Poistetaanko koira tietoineen?')) return;
+    state.dogs = state.dogs.filter(d => d.id !== id);
+    if (state.sel === id) state.sel = state.dogs[0]?.id || null;
+    save(); render();
+}
+
+function selectDog(id) {
+    state.sel = id;
+    activeTab = 'today';
+    save(); render();
+}
+
+// ═══════════════════════════════════════
+//  MEALS
+// ═══════════════════════════════════════
+
+function setMealCount(delta) {
+    const d = dog(); if (!d) return;
+    const cur = d.meals.length;
+    const nxt = Math.max(1, Math.min(8, cur + delta));
+    const names = ['Aamupala','Päivällinen','Iltapäiväpala','Päivällinen','Iltapala','Illallinen','Yöpala','Ateria 8'];
+    const times = ['07:00','10:00','13:00','16:00','18:00','20:00','22:00','06:00'];
+    if (nxt > cur) {
+        for (let i = cur; i < nxt; i++) d.meals.push(newMeal(names[i] || `Ateria ${i+1}`, times[i] || '12:00'));
+    } else {
+        d.meals = d.meals.slice(0, nxt);
+    }
+    save(); renderMain();
+}
+
+function setMealField(mealId, field, val) {
+    const d = dog(); if (!d) return;
+    const m = d.meals.find(m => m.id === mealId);
+    if (m) { m[field] = val; save(); }
+}
+
+function confirmMeal(mealId) {
+    const d = dog(); if (!d) return;
+    const m = d.meals.find(m => m.id === mealId);
+    if (!m) return;
+    const t = today();
+    if (m.confirmedDate === t) { m.confirmedDate = null; m.confirmedTime = null; }
+    else { m.confirmedDate = t; m.confirmedTime = nowTime(); }
+    save(); renderMain();
+}
+
+// ─── Meal foods ───
+
+function addFoodToMeal(mealId) {
+    const d = dog(); if (!d) return;
+    const m = d.meals.find(m => m.id === mealId); if (!m) return;
+    const sel = document.getElementById(`fs-${mealId}`);
+    const amt = document.getElementById(`fa-${mealId}`);
+    const unt = document.getElementById(`fu-${mealId}`);
+    const name = sel?.value; const amount = parseFloat(amt?.value);
+    if (!name || !amount || isNaN(amount)) { toast('Valitse ruoka ja syötä määrä'); return; }
+    m.foods.push({ id: uid(), name, amount, unit: unt.value });
+    amt.value = '';
+    save(); renderMain();
+}
+
+function removeFoodFromMeal(mealId, foodIdx) {
+    const d = dog(); if (!d) return;
+    const m = d.meals.find(m => m.id === mealId); if (!m) return;
+    m.foods.splice(foodIdx, 1);
+    save(); renderMain();
+}
+
+// ═══════════════════════════════════════
+//  MEDICATIONS (separate schedule)
+// ═══════════════════════════════════════
+
+function addMed() {
+    const d = dog(); if (!d) return;
+    const name = document.getElementById('med-name')?.value?.trim();
+    const amount = document.getElementById('med-amount')?.value?.trim();
+    const unit = document.getElementById('med-unit')?.value;
+    const time = document.getElementById('med-time')?.value;
+    if (!name || !amount) { toast('Syötä lääkkeen nimi ja määrä'); return; }
+    d.meds.push({ id: uid(), name, amount, unit, time, confirmedDate: null, confirmedTime: null });
+    document.getElementById('med-name').value = '';
+    document.getElementById('med-amount').value = '';
+    document.getElementById('med-time').value = '';
+    save(); renderMain();
+}
+
+function removeMed(idx) {
+    const d = dog(); if (!d) return;
+    d.meds.splice(idx, 1);
+    save(); renderMain();
+}
+
+function confirmMed(idx) {
+    const d = dog(); if (!d) return;
+    const m = d.meds[idx]; if (!m) return;
+    const t = today();
+    if (m.confirmedDate === t) { m.confirmedDate = null; m.confirmedTime = null; }
+    else { m.confirmedDate = t; m.confirmedTime = nowTime(); }
+    save(); renderMain();
+}
+
+// ═══════════════════════════════════════
+//  QUICK PICKS
+// ═══════════════════════════════════════
+
+function addFoodPick() {
+    const d = dog(); if (!d) return;
+    const inp = document.getElementById('fp-input');
+    const v = inp.value.trim();
+    if (!v) return;
+    if (d.foodPicks.includes(v)) { toast('Jo listalla'); return; }
+    d.foodPicks.push(v); inp.value = '';
+    save(); renderMain();
+}
+function removeFoodPick(idx) {
+    const d = dog(); if (!d) return;
+    d.foodPicks.splice(idx, 1); save(); renderMain();
+}
+
+function addMedPick() {
+    const d = dog(); if (!d) return;
+    const inp = document.getElementById('mp-input');
+    const v = inp.value.trim();
+    if (!v) return;
+    if (d.medPicks.includes(v)) { toast('Jo listalla'); return; }
+    d.medPicks.push(v); inp.value = '';
+    save(); renderMain();
+}
+function removeMedPick(idx) {
+    const d = dog(); if (!d) return;
+    d.medPicks.splice(idx, 1); save(); renderMain();
+}
+
+// ═══════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════
+
+let _toastT;
+function toast(msg, ok) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast visible' + (ok ? ' ok' : '');
+    clearTimeout(_toastT);
+    _toastT = setTimeout(() => el.className = 'toast', 2600);
+}
+
+// ═══════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════
+
+function render() { renderSidebar(); renderMain(); renderDate(); }
+
+function renderDate() {
+    const el = document.getElementById('hdr-date');
+    if (el) el.textContent = new Date().toLocaleDateString('fi-FI', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+}
+
+function renderSidebar() {
+    const el = document.getElementById('dog-list'); if (!el) return;
+    if (!state.dogs.length) {
+        el.innerHTML = '<div style="padding:16px;color:#718096;font-size:0.83rem;text-align:center">Ei koiria</div>';
+        return;
+    }
+    el.innerHTML = state.dogs.map(d => `
+        <div class="dog-item ${d.id === state.sel ? 'active' : ''}" onclick="selectDog('${d.id}')">
+            <span>🐕</span>
+            <span class="dog-name">${h(d.name)}</span>
+            <button class="delete-dog-btn" onclick="event.stopPropagation();deleteDog('${d.id}')" title="Poista">✕</button>
+        </div>
+    `).join('');
+}
+
+function renderMain() {
+    const el = document.getElementById('main'); if (!el) return;
+    const d = dog();
+    if (!d) {
+        el.innerHTML = `<div class="welcome"><div>
+            <div style="font-size:3rem;margin-bottom:14px">🐾</div>
+            <p>Valitse koira vasemmalta tai lisää uusi koira</p>
+        </div></div>`;
+        return;
+    }
+
+    const t = today();
+    const mealsDone = d.meals.filter(m => m.confirmedDate === t).length;
+    const medsDone  = d.meds.filter(m => m.confirmedDate === t).length;
+    const medsTotal = d.meds.length;
+
+    el.innerHTML = `
+        <div class="dog-page-title">🐕 ${h(d.name)}</div>
+        <div class="dog-page-sub">
+            Ateriat: ${mealsDone}/${d.meals.length} kuitattu
+            ${medsTotal ? ` &nbsp;·&nbsp; Lääkitykset: ${medsDone}/${medsTotal} kuitattu` : ''}
+        </div>
+        <div class="tabs">
+            <button class="tab-btn ${activeTab==='today'?'active':''}" onclick="switchTab('today')">📅 Tänään</button>
+            <button class="tab-btn ${activeTab==='meals'?'active':''}" onclick="switchTab('meals')">🍽️ Ateriat</button>
+            <button class="tab-btn ${activeTab==='meds'?'active':''}" onclick="switchTab('meds')">💊 Lääkitykset</button>
+            <button class="tab-btn ${activeTab==='picks'?'active':''}" onclick="switchTab('picks')">⚡ Pikavalinnat</button>
+        </div>
+        <div id="tab-body">${renderTabBody(d, t)}</div>
+    `;
+}
+
+function switchTab(tab) { activeTab = tab; renderMain(); }
+
+function renderTabBody(d, t) {
+    switch(activeTab) {
+        case 'today': return tabToday(d, t);
+        case 'meals': return tabMeals(d);
+        case 'meds':  return tabMeds(d, t);
+        case 'picks': return tabPicks(d);
+    }
+    return '';
+}
+
+// ─── Tab: Tänään ───────────────────────
+
+function tabToday(d, t) {
+    let out = '';
+
+    // Meals
+    out += `<div class="section-label">Ateriat</div>`;
+    if (!d.meals.length) {
+        out += `<div class="empty">Ei aterioita. Lisää ateriat <strong>Ateriat</strong>-välilehdellä.</div>`;
+    } else {
+        out += d.meals.map(m => {
+            const done = m.confirmedDate === t;
+            const hasFoods = m.foods?.length;
+            return `
+            <div class="card today-card ${done ? 'done' : 'pending'}">
+                <div class="item-header">
+                    <span class="item-time">${m.time || '--:--'}</span>
+                    <span class="item-title">${h(m.name)}</span>
+                    <button class="confirm-btn ${done ? 'done' : 'pending'}" onclick="confirmMeal('${m.id}')">
+                        ${done ? `✓ Kuitattu ${m.confirmedTime||''}` : '○ Kuittaa'}
+                    </button>
+                </div>
+                ${hasFoods
+                    ? `<div class="detail-list">${m.foods.map(f => `<div class="detail-row">${h(f.name)}: <strong>${f.amount} ${f.unit}</strong></div>`).join('')}</div>`
+                    : `<div class="no-items-note">Ei ruoka-aineita määritelty</div>`}
+            </div>`;
+        }).join('');
+    }
+
+    // Meds
+    if (d.meds.length) {
+        out += `<div class="section-label" style="margin-top:24px">Lääkitykset</div>`;
+        out += d.meds.map((m, i) => {
+            const done = m.confirmedDate === t;
+            return `
+            <div class="card today-card ${done ? 'done' : 'pending'}" style="border-left-color:${done ? '#b794f4' : '#d6bcfa'}">
+                <div class="item-header">
+                    <span class="item-time" style="color:#6b46c1">${m.time || '--:--'}</span>
+                    <span class="item-title">💊 ${h(m.name)}</span>
+                    <button class="confirm-btn ${done ? 'done' : 'pending'}" style="${done ? 'background:#faf5ff;color:#553c9a;border-color:#d6bcfa' : 'background:#faf5ff;color:#6b46c1;border-color:#d6bcfa'}"
+                        onclick="confirmMed(${i})">
+                        ${done ? `✓ Kuitattu ${m.confirmedTime||''}` : '○ Kuittaa'}
+                    </button>
+                </div>
+                <div class="detail-list">
+                    <div class="detail-row">${h(m.amount)} ${h(m.unit)}</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    return out;
+}
+
+// ─── Tab: Ateriat ──────────────────────
+
+function tabMeals(d) {
+    let out = `
+        <div class="card">
+            <div class="counter-wrap">
+                <label>Aterioita päivässä:</label>
+                <div class="counter-btns">
+                    <button class="ctr-btn" onclick="setMealCount(-1)">−</button>
+                    <span class="ctr-val">${d.meals.length}</span>
+                    <button class="ctr-btn" onclick="setMealCount(1)">+</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    if (!d.meals.length) {
+        out += `<div class="empty">Lisää aterioita yllä olevalla + -napilla</div>`;
+        return out;
+    }
+
+    const foodOpts = d.foodPicks.map((p,i) => `<option value="${i}">${h(p)}</option>`).join('');
+    const noFoodPicks = !d.foodPicks.length;
+
+    out += d.meals.map((m, mi) => `
+        <div class="meal-block">
+            <div class="meal-block-header">
+                <div class="meal-num">${mi+1}</div>
+                <input type="text" value="${h(m.name)}" placeholder="Aterian nimi"
+                    style="flex:1;font-weight:600"
+                    onchange="setMealField('${m.id}','name',this.value)">
+                <input type="time" value="${m.time}"
+                    onchange="setMealField('${m.id}','time',this.value)">
+            </div>
+
+            <div style="font-size:0.83rem;color:#718096;margin-bottom:7px">Ruoka-aineet:</div>
+
+            ${(m.foods||[]).map((f,fi) => `
+                <div class="food-row">
+                    <span class="food-row-name">${h(f.name)}</span>
+                    <span class="food-row-amount">${f.amount} ${f.unit}</span>
+                    <button class="btn btn-danger btn-sm" onclick="removeFoodFromMeal('${m.id}',${fi})">Poista</button>
+                </div>
+            `).join('')}
+
+            ${noFoodPicks
+                ? `<div style="color:#a0aec0;font-size:0.83rem;font-style:italic;margin-top:6px">Lisää ensin ruoka-aineet <strong>Pikavalinnat</strong>-välilehdellä</div>`
+                : `<div class="add-row">
+                    <select id="fs-${m.id}">${foodOpts}</select>
+                    <input type="number" id="fa-${m.id}" placeholder="Määrä" min="0.1" step="0.1" style="width:85px">
+                    <select id="fu-${m.id}">
+                        <option>g</option><option>dl</option><option>ml</option>
+                        <option>kpl</option><option>tl</option><option>rkl</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="addFoodToMeal('${m.id}')">+ Lisää ruoka</button>
+                  </div>`
+            }
+        </div>
+    `).join('');
+
+    return out;
+}
+
+// ─── Tab: Lääkitykset ──────────────────
+
+function tabMeds(d, t) {
+    let out = `<div class="card">
+        <div class="card-title">Lääkitysaikataulu</div>
+    `;
+
+    if (!d.meds.length) {
+        out += `<div class="empty" style="padding:16px 0">Ei lääkityksiä lisätty</div>`;
+    } else {
+        const medOpts = d.medPicks.length
+            ? d.medPicks.map((p,i) => `<option value="${i}">${h(p)}</option>`).join('')
+            : '';
+
+        out += d.meds.map((m, i) => {
+            const done = m.confirmedDate === t;
+            return `
+            <div class="med-row" style="margin-bottom:8px;">
+                <span class="med-row-name">💊 <strong>${h(m.name)}</strong></span>
+                <span class="med-row-amount">${h(m.amount)} ${h(m.unit)}</span>
+                <span style="color:#718096;font-size:0.85rem">${m.time || '–'}</span>
+                <button class="btn btn-danger btn-sm" onclick="removeMed(${i})">Poista</button>
+            </div>`;
+        }).join('');
+    }
+
+    out += `
+        <hr class="divider">
+        <div style="font-size:0.9rem;font-weight:600;margin-bottom:10px">Lisää uusi lääkitys:</div>
+        <div class="add-row" style="flex-wrap:wrap">
+            <input type="text" id="med-name" placeholder="Lääkkeen nimi" style="flex:1;min-width:130px">
+            <input type="number" id="med-amount" placeholder="Määrä" min="0.1" step="0.1" style="width:85px">
+            <select id="med-unit">
+                <option>tabletti</option><option>ml</option><option>mg</option>
+                <option>tl</option><option>kpl</option><option>g</option><option>tippa</option>
+            </select>
+            <input type="time" id="med-time">
+            <button class="btn btn-success" onclick="addMed()">+ Lisää lääkitys</button>
+        </div>
+    </div>`;
+
+    return out;
+}
+
+// ─── Tab: Pikavalinnat ─────────────────
+
+function tabPicks(d) {
+    return `
+        <div class="card">
+            <div class="card-title">🥩 Ruoka-aineet</div>
+            <p style="font-size:0.83rem;color:#718096;margin-bottom:12px">
+                Nämä ruoka-aineet ovat valittavissa aterioiden koostamisessa.
+            </p>
+            <div class="picks-wrap">
+                ${d.foodPicks.length
+                    ? d.foodPicks.map((p,i) => `
+                        <span class="pick-chip food">${h(p)}
+                            <button onclick="removeFoodPick(${i})" title="Poista">✕</button>
+                        </span>`).join('')
+                    : `<span class="no-picks">Ei pikavalinttoja</span>`}
+            </div>
+            <div class="add-row">
+                <input type="text" id="fp-input" placeholder="Esim. Vuohenliha" style="flex:1"
+                    onkeydown="if(event.key==='Enter')addFoodPick()">
+                <button class="btn btn-primary" onclick="addFoodPick()">+ Lisää</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">💊 Lääkkeet</div>
+            <p style="font-size:0.83rem;color:#718096;margin-bottom:12px">
+                Lääkkeiden pikavalinnat nopeuttavat lääkitysten kirjaamista.
+            </p>
+            <div class="picks-wrap">
+                ${d.medPicks.length
+                    ? d.medPicks.map((p,i) => `
+                        <span class="pick-chip med">${h(p)}
+                            <button onclick="removeMedPick(${i})" title="Poista">✕</button>
+                        </span>`).join('')
+                    : `<span class="no-picks">Ei pikavalinttoja</span>`}
+            </div>
+            <div class="add-row">
+                <input type="text" id="mp-input" placeholder="Esim. Sydänlääke" style="flex:1"
+                    onkeydown="if(event.key==='Enter')addMedPick()">
+                <button class="btn btn-primary" onclick="addMedPick()">+ Lisää</button>
+            </div>
+        </div>
+    `;
+}
+
+// ═══════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════
+
+function h(s) {
+    return String(s ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════
+
+document.getElementById('new-dog-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addDog();
+});
+
+renderDate();
+updateCodeDisplay();
+setInterval(renderDate, 60000);
+initFirebase();
+
+// ─── Service Worker ────────────────────
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+}
+</script>
+</body>
+</html>
