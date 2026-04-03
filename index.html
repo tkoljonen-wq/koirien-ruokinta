@@ -307,10 +307,58 @@
         .toast.visible { transform: translateY(0); opacity: 1; }
         .toast.ok { background: #276749; }
 
+        /* ─── Mobile dog-back bar ─── */
+        .mobile-dog-bar {
+            display: none;
+        }
+        .mobile-welcome { display: none; }
+        .desktop-welcome { display: flex; }
+
         /* ─── Responsive ─── */
-        @media (max-width: 560px) {
-            .sidebar { width: 170px; }
-            .detail-list, .no-items-note { margin-left: 0; }
+        @media (max-width: 600px) {
+            .sidebar { display: none; }
+            .main { padding: 12px; }
+            .mobile-welcome { display: block; }
+            .desktop-welcome { display: none; }
+            .mobile-dog-bar {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 14px;
+            }
+            .mobile-back-btn {
+                background: #e2e8f0;
+                border: none;
+                border-radius: 8px;
+                padding: 7px 12px;
+                font-size: 0.88rem;
+                cursor: pointer;
+                color: #2d3748;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+            .mobile-back-btn:active { background: #cbd5e0; }
+            .mobile-dog-name {
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: #1a365d;
+            }
+            .dog-page-title { display: none; }
+            .mobile-dog-list-full {
+                background: #2d3748;
+                border-radius: 10px;
+                overflow: hidden;
+                margin-bottom: 16px;
+            }
+            .mobile-dog-list-full .sidebar-title {
+                padding: 14px 16px;
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: #a0aec0;
+                border-bottom: 1px solid #4a5568;
+            }
+            .tab-btn { padding: 9px 10px; font-size: 0.82rem; }
         }
     </style>
 </head>
@@ -456,6 +504,28 @@ function initFirebase() {
 
 function addDog() {
     const inp = document.getElementById('new-dog-input');
+    const name = inp.value.trim();
+    if (!name) return;
+    const d = {
+        id: uid(), name,
+        foodPicks: ['Kuivaruoka', 'Märkäruoka', 'Kana', 'Naudanliha', 'Riisi'],
+        medPicks: [],
+        meals: [
+            newMeal('Aamupala', '08:00'),
+            newMeal('Illallinen', '17:00')
+        ],
+        meds: []
+    };
+    state.dogs.push(d);
+    state.sel = d.id;
+    inp.value = '';
+    save(); render();
+    toast(`${name} lisätty!`, true);
+}
+
+function addDogMobile() {
+    const inp = document.getElementById('new-dog-input-mobile');
+    if (!inp) return;
     const name = inp.value.trim();
     if (!name) return;
     const d = {
@@ -638,6 +708,19 @@ function toast(msg, ok) {
 //  RENDER
 // ═══════════════════════════════════════
 
+function renderMobileDogList() {
+    if (!state.dogs.length) return '';
+    const items = state.dogs.map(d => `
+        <div class="dog-item" onclick="selectDog('${d.id}')">
+            <span>🐕</span>
+            <span class="dog-name">${h(d.name)}</span>
+        </div>`).join('');
+    return `<div class="mobile-dog-list-full">
+        <div class="sidebar-title">Koirat</div>
+        ${items}
+    </div>`;
+}
+
 function render() { renderSidebar(); renderMain(); renderDate(); }
 
 function renderDate() {
@@ -666,10 +749,20 @@ function renderMain() {
     const el = document.getElementById('main'); if (!el) return;
     const d = dog();
     if (!d) {
-        el.innerHTML = `<div class="welcome"><div>
-            <div style="font-size:3rem;margin-bottom:14px">🐾</div>
-            <p>Valitse koira vasemmalta tai lisää uusi koira</p>
-        </div></div>`;
+        el.innerHTML = `
+            <div class="welcome desktop-welcome"><div>
+                <div style="font-size:3rem;margin-bottom:14px">🐾</div>
+                <p>Valitse koira vasemmalta tai lisää uusi koira</p>
+            </div></div>
+            <div class="mobile-welcome">
+                <div style="font-size:2.5rem;text-align:center;margin-bottom:16px">🐾</div>
+                ${renderMobileDogList()}
+                <div style="margin-top:16px">
+                    <input type="text" id="new-dog-input-mobile" placeholder="Koiran nimi..." maxlength="30"
+                        style="width:100%;padding:10px;border-radius:8px;border:1px solid #cbd5e0;font-size:1rem;box-sizing:border-box;margin-bottom:8px">
+                    <button onclick="addDogMobile()" style="width:100%;padding:10px;background:#48bb78;color:white;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">+ Lisää koira</button>
+                </div>
+            </div>`;
         return;
     }
 
@@ -679,6 +772,10 @@ function renderMain() {
     const medsTotal = d.meds.length;
 
     el.innerHTML = `
+        <div class="mobile-dog-bar">
+            <button class="mobile-back-btn" onclick="selectDog(null)">← Koirat</button>
+            <span class="mobile-dog-name">🐕 ${h(d.name)}</span>
+        </div>
         <div class="dog-page-title">🐕 ${h(d.name)}</div>
         <div class="dog-page-sub">
             Ateriat: ${mealsDone}/${d.meals.length} kuitattu
