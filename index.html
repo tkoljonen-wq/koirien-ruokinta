@@ -105,6 +105,10 @@
         }
         .dog-item:hover .delete-dog-btn { opacity: 1; }
 
+        @media (max-width: 600px) {
+            .delete-dog-btn { opacity: 1; }
+        }
+
         .add-dog-form {
             padding: 12px;
             border-top: 1px solid #4a5568;
@@ -715,6 +719,7 @@ function renderMobileDogList() {
         <div class="dog-item" onclick="selectDog('${d.id}')">
             <span>🐕</span>
             <span class="dog-name">${h(d.name)}</span>
+            <button class="delete-dog-btn" onclick="event.stopPropagation();deleteDog('${d.id}')" title="Poista">✕</button>
         </div>`).join('');
     return `<div class="mobile-dog-list-full">
         <div class="sidebar-title">Koirat</div>

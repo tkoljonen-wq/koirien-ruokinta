@@ -1,4 +1,4 @@
-const CACHE = 'koirat-v7';
+const CACHE = 'koirat-v8';
 const FILES = [
   './index.html',
   './manifest.json',
