@@ -381,7 +381,7 @@
 
 <div class="header">
     <span style="font-size:1.4rem">🐕</span>
-    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v10</span></h1>
+    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v11</span></h1>
     <div class="header-right">
         <span class="header-date" id="hdr-date"></span>
         <div class="code-row">
@@ -427,11 +427,9 @@ const FIREBASE_CONFIG = {
 //  STATE
 // ═══════════════════════════════════════
 
-let state = { dogs: [], sel: null };
+let state = { dogs: [], sel: null, dvHidden: { date: '', ids: [] } };
 let activeTab = 'today';
 let viewMode = 'dogs'; // 'dogs' | 'dayview'
-let _dvDate = '';
-let _dvHidden = [];
 let _listener = null;
 let db;
 
@@ -486,9 +484,10 @@ function docRef() {
 async function save() {
     try {
         await docRef().set({
-            dogs: state.dogs,
-            sel:  state.sel,
-            ts:   new Date().toISOString()
+            dogs:     state.dogs,
+            sel:      state.sel,
+            dvHidden: state.dvHidden,
+            ts:       new Date().toISOString()
         });
     } catch(e) {
         toast('Tallennusvirhe: ' + e.message);
@@ -501,11 +500,13 @@ function startListener() {
     _listener = docRef().onSnapshot(snap => {
         if (snap.exists) {
             const d = snap.data();
-            state.dogs = d.dogs || [];
-            state.sel  = d.sel  || null;
+            state.dogs     = d.dogs     || [];
+            state.sel      = d.sel      || null;
+            state.dvHidden = d.dvHidden || { date: '', ids: [] };
         } else {
-            state.dogs = [];
-            state.sel  = null;
+            state.dogs     = [];
+            state.sel      = null;
+            state.dvHidden = { date: '', ids: [] };
         }
         render();
     }, err => toast('Yhteysvirhe: ' + err.message));
@@ -586,7 +587,9 @@ function selectDog(id) {
 
 function dvInit() {
     const t = today();
-    if (_dvDate !== t) { _dvDate = t; _dvHidden = []; }
+    if (!state.dvHidden || state.dvHidden.date !== t) {
+        state.dvHidden = { date: t, ids: [] };
+    }
 }
 
 function openDayView() {
@@ -602,10 +605,10 @@ function closeDayView() {
 
 function hideDogFromDayView(id) {
     const d = state.dogs.find(x => x.id === id);
-    if (!confirm(`Piilotetaanko ${d ? h(d.name) : 'koira'} tästä päivänäkymästä?\nKoira ei poistu rekisteristä.`)) return;
+    if (!confirm(`Piilotetaanko ${d ? d.name : 'koira'} tästä päivänäkymästä?\nKoira ei poistu rekisteristä.`)) return;
     dvInit();
-    if (!_dvHidden.includes(id)) _dvHidden.push(id);
-    renderMain();
+    if (!state.dvHidden.ids.includes(id)) state.dvHidden.ids.push(id);
+    save(); renderMain();
 }
 
 function confirmMealDv(dogId, mealId) {
@@ -813,7 +816,7 @@ function renderSidebar() {
 function renderDayView() {
     dvInit();
     const t = today();
-    const visible = state.dogs.filter(d => !_dvHidden.includes(d.id));
+    const visible = state.dogs.filter(d => !state.dvHidden.ids.includes(d.id));
     const dateStr = new Date().toLocaleDateString('fi-FI', { weekday: 'long', day: 'numeric', month: 'long' });
 
     let out = `
