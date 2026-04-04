@@ -109,6 +109,16 @@
             .delete-dog-btn { opacity: 1; }
         }
 
+        .dayview-btn {
+            width: 100%; padding: 12px 14px;
+            background: #2b6cb0; color: white;
+            border: none; border-top: 1px solid #4a5568;
+            cursor: pointer; font-size: 0.88rem; font-weight: 600;
+            text-align: left; flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .dayview-btn:hover { background: #2c5282; }
+
         .add-dog-form {
             padding: 12px;
             border-top: 1px solid #4a5568;
@@ -371,7 +381,7 @@
 
 <div class="header">
     <span style="font-size:1.4rem">🐕</span>
-    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v9</span></h1>
+    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v10</span></h1>
     <div class="header-right">
         <span class="header-date" id="hdr-date"></span>
         <div class="code-row">
@@ -387,6 +397,7 @@
     <aside class="sidebar">
         <div class="sidebar-title">Koirat</div>
         <div class="dog-list" id="dog-list"></div>
+        <button class="dayview-btn" onclick="openDayView()">📅 Päivänäkymä</button>
         <div class="add-dog-form">
             <input type="text" id="new-dog-input" placeholder="Koiran nimi..." maxlength="30">
             <button onclick="addDog()">+ Lisää koira</button>
@@ -418,6 +429,9 @@ const FIREBASE_CONFIG = {
 
 let state = { dogs: [], sel: null };
 let activeTab = 'today';
+let viewMode = 'dogs'; // 'dogs' | 'dayview'
+let _dvDate = '';
+let _dvHidden = [];
 let _listener = null;
 let db;
 
@@ -562,9 +576,54 @@ function deleteDog(id) {
 }
 
 function selectDog(id) {
+    viewMode = 'dogs';
     state.sel = id;
     activeTab = 'today';
     save(); render();
+}
+
+// ─── Day view ───────────────────────────
+
+function dvInit() {
+    const t = today();
+    if (_dvDate !== t) { _dvDate = t; _dvHidden = []; }
+}
+
+function openDayView() {
+    dvInit();
+    viewMode = 'dayview';
+    renderMain();
+}
+
+function closeDayView() {
+    viewMode = 'dogs';
+    renderMain();
+}
+
+function hideDogFromDayView(id) {
+    const d = state.dogs.find(x => x.id === id);
+    if (!confirm(`Piilotetaanko ${d ? h(d.name) : 'koira'} tästä päivänäkymästä?\nKoira ei poistu rekisteristä.`)) return;
+    dvInit();
+    if (!_dvHidden.includes(id)) _dvHidden.push(id);
+    renderMain();
+}
+
+function confirmMealDv(dogId, mealId) {
+    const d = state.dogs.find(x => x.id === dogId); if (!d) return;
+    const m = d.meals.find(m => m.id === mealId); if (!m) return;
+    const t = today();
+    if (m.confirmedDate === t) { m.confirmedDate = null; m.confirmedTime = null; }
+    else { m.confirmedDate = t; m.confirmedTime = nowTime(); }
+    save(); renderMain();
+}
+
+function confirmMedDv(dogId, idx) {
+    const d = state.dogs.find(x => x.id === dogId); if (!d) return;
+    const m = d.meds[idx]; if (!m) return;
+    const t = today();
+    if (m.confirmedDate === t) { m.confirmedDate = null; m.confirmedTime = null; }
+    else { m.confirmedDate = t; m.confirmedTime = nowTime(); }
+    save(); renderMain();
 }
 
 // ═══════════════════════════════════════
@@ -751,8 +810,96 @@ function renderSidebar() {
     `).join('');
 }
 
+function renderDayView() {
+    dvInit();
+    const t = today();
+    const visible = state.dogs.filter(d => !_dvHidden.includes(d.id));
+    const dateStr = new Date().toLocaleDateString('fi-FI', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    let out = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+            <button onclick="closeDayView()" style="background:#e2e8f0;border:none;border-radius:8px;padding:7px 12px;font-size:0.88rem;cursor:pointer;color:#2d3748;font-weight:600;white-space:nowrap">← Takaisin</button>
+            <div class="dog-page-title" style="margin:0">📅 Päivänäkymä</div>
+        </div>
+        <div class="dog-page-sub">${dateStr}</div>
+    `;
+
+    if (!state.dogs.length) {
+        out += `<div class="empty">Ei koiria rekisterissä</div>`;
+        return out;
+    }
+    if (!visible.length) {
+        out += `<div class="empty">Kaikki koirat piilotettu tänään</div>`;
+        return out;
+    }
+
+    for (const d of visible) {
+        const items = [];
+        for (const m of d.meals) items.push({ type: 'meal', time: m.time || '99:99', data: m });
+        for (let i = 0; i < d.meds.length; i++) items.push({ type: 'med', time: d.meds[i].time || '99:99', data: d.meds[i], idx: i });
+        items.sort((a, b) => a.time.localeCompare(b.time));
+
+        out += `
+            <div style="display:flex;align-items:center;justify-content:space-between;margin:22px 0 10px">
+                <div class="section-label" style="margin:0">🐕 ${h(d.name)}</div>
+                <button class="btn btn-danger btn-sm" onclick="hideDogFromDayView('${d.id}')">Piilota tänään</button>
+            </div>
+        `;
+
+        if (!items.length) {
+            out += `<div class="empty" style="padding:8px 0">Ei aterioita tai lääkityksiä</div>`;
+            continue;
+        }
+
+        for (const item of items) {
+            if (item.type === 'meal') {
+                const m = item.data;
+                const done = m.confirmedDate === t;
+                out += `
+                <div class="card today-card ${done ? 'done' : 'pending'}">
+                    <div class="item-header">
+                        <span class="item-time">${m.time || '--:--'}</span>
+                        <span class="item-title">${h(m.name)}</span>
+                        <button class="confirm-btn ${done ? 'done' : 'pending'}" onclick="confirmMealDv('${d.id}','${m.id}')">
+                            ${done ? `✓ Kuitattu ${m.confirmedTime || ''}` : '○ Kuittaa'}
+                        </button>
+                    </div>
+                    ${m.foods?.length
+                        ? `<div class="detail-list">${m.foods.map(f => `<div class="detail-row">${h(f.name)}: <strong>${f.amount} ${f.unit}</strong></div>`).join('')}</div>`
+                        : `<div class="no-items-note">Ei ruoka-aineita määritelty</div>`}
+                </div>`;
+            } else {
+                const m = item.data;
+                const done = m.confirmedDate === t;
+                out += `
+                <div class="card today-card ${done ? 'done' : 'pending'}" style="border-left-color:${done ? '#b794f4' : '#d6bcfa'}">
+                    <div class="item-header">
+                        <span class="item-time" style="color:#6b46c1">${m.time || '--:--'}</span>
+                        <span class="item-title">💊 ${h(m.name)}</span>
+                        <button class="confirm-btn ${done ? 'done' : 'pending'}" style="${done ? 'background:#faf5ff;color:#553c9a;border-color:#d6bcfa' : 'background:#faf5ff;color:#6b46c1;border-color:#d6bcfa'}"
+                            onclick="confirmMedDv('${d.id}',${item.idx})">
+                            ${done ? `✓ Kuitattu ${m.confirmedTime || ''}` : '○ Kuittaa'}
+                        </button>
+                    </div>
+                    <div class="detail-list">
+                        <div class="detail-row">${h(m.amount)} ${h(m.unit)}</div>
+                    </div>
+                </div>`;
+            }
+        }
+    }
+
+    return out;
+}
+
 function renderMain() {
     const el = document.getElementById('main'); if (!el) return;
+
+    if (viewMode === 'dayview') {
+        el.innerHTML = renderDayView();
+        return;
+    }
+
     const d = dog();
     if (!d) {
         el.innerHTML = `
@@ -762,6 +909,7 @@ function renderMain() {
             </div></div>
             <div class="mobile-welcome">
                 <div style="font-size:2.5rem;text-align:center;margin-bottom:16px">🐾</div>
+                ${state.dogs.length ? `<button onclick="openDayView()" style="width:100%;padding:11px;background:#2b6cb0;color:white;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;margin-bottom:12px">📅 Päivänäkymä</button>` : ''}
                 ${renderMobileDogList()}
                 <div style="margin-top:16px">
                     <input type="text" id="new-dog-input-mobile" placeholder="Koiran nimi..." maxlength="30"
