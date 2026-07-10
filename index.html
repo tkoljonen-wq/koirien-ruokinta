@@ -381,7 +381,7 @@
 
 <div class="header">
     <span style="font-size:1.4rem">🐕</span>
-    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v15</span></h1>
+    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v16</span></h1>
     <div class="header-right">
         <span class="header-date" id="hdr-date"></span>
         <div class="code-row">
@@ -431,6 +431,7 @@ let state = { dogs: [], sel: null, dvHidden: { date: '', ids: [] } };
 let activeTab = 'today';
 let viewMode = 'dogs'; // 'dogs' | 'dayview'
 let _listener = null;
+let _rendered = false;
 let db;
 
 function uid() {
@@ -465,7 +466,9 @@ function updateCodeDisplay() {
 }
 
 function copyCode() {
-    navigator.clipboard.writeText(KOODI).then(() => toast('Koodi kopioitu: ' + KOODI, true));
+    navigator.clipboard.writeText(KOODI)
+        .then(() => toast('Koodi kopioitu: ' + KOODI, true))
+        .catch(() => toast('Kopiointi epäonnistui'));
 }
 
 function changeCode() {
@@ -489,7 +492,6 @@ async function save() {
     try {
         await docRef().set({
             dogs:     state.dogs,
-            sel:      state.sel,
             dvHidden: state.dvHidden,
             ts:       new Date().toISOString()
         });
@@ -502,17 +504,17 @@ function startListener() {
     if (_listener) _listener();
     updateCodeDisplay();
     _listener = docRef().onSnapshot(snap => {
-        if (snap.exists) {
-            const d = snap.data();
-            state.dogs     = d.dogs     || [];
-            state.sel      = d.sel      || null;
-            state.dvHidden = d.dvHidden || { date: '', ids: [] };
-        } else {
-            state.dogs     = [];
-            state.sel      = null;
-            state.dvHidden = { date: '', ids: [] };
-        }
-        render();
+        const d = snap.exists ? snap.data() : {};
+        const incomingDogs     = d.dogs     || [];
+        const incomingDvHidden = d.dvHidden || { date: '', ids: [] };
+        // Ohita renderöinti, jos data ei muuttunut (esim. oman tallennuksen kaiku),
+        // ettei keskeneräinen lomakesyöte pyyhkiydy turhaan
+        const unchanged = JSON.stringify(incomingDogs) === JSON.stringify(state.dogs)
+            && JSON.stringify(incomingDvHidden) === JSON.stringify(state.dvHidden);
+        state.dogs     = incomingDogs;
+        state.dvHidden = incomingDvHidden;
+        if (state.sel && !state.dogs.some(x => x.id === state.sel)) state.sel = null;
+        if (!unchanged || !_rendered) { _rendered = true; render(); }
     }, err => toast('Yhteysvirhe: ' + err.message));
 }
 
@@ -527,29 +529,8 @@ function initFirebase() {
 //  DOG CRUD
 // ═══════════════════════════════════════
 
-function addDog() {
-    const inp = document.getElementById('new-dog-input');
-    const name = inp.value.trim();
-    if (!name) return;
-    const d = {
-        id: uid(), name,
-        foodPicks: ['Kuivaruoka', 'Märkäruoka', 'Kana', 'Naudanliha', 'Riisi'],
-        medPicks: [],
-        meals: [
-            newMeal('Aamupala', '08:00'),
-            newMeal('Illallinen', '17:00')
-        ],
-        meds: []
-    };
-    state.dogs.push(d);
-    state.sel = d.id;
-    inp.value = '';
-    save(); render();
-    toast(`${name} lisätty!`, true);
-}
-
-function addDogMobile() {
-    const inp = document.getElementById('new-dog-input-mobile');
+function addDog(inputId) {
+    const inp = document.getElementById(inputId || 'new-dog-input');
     if (!inp) return;
     const name = inp.value.trim();
     if (!name) return;
@@ -585,7 +566,7 @@ function selectDog(id) {
     viewMode = 'dogs';
     state.sel = id;
     activeTab = 'today';
-    save(); render();
+    render();
 }
 
 // ─── Day view ───────────────────────────
@@ -642,12 +623,14 @@ function setMealCount(delta) {
     const d = dog(); if (!d) return;
     const cur = d.meals.length;
     const nxt = Math.max(1, Math.min(8, cur + delta));
-    const names = ['Aamupala','Päivällinen','Iltapäiväpala','Päivällinen','Iltapala','Illallinen','Yöpala','Ateria 8'];
+    const names = ['Aamupala','Lounas','Iltapäiväpala','Päivällinen','Iltapala','Illallinen','Yöpala','Ateria 8'];
     const times = ['07:00','10:00','13:00','16:00','18:00','20:00','22:00','06:00'];
     if (nxt > cur) {
         for (let i = cur; i < nxt; i++) d.meals.push(newMeal(names[i] || `Ateria ${i+1}`, times[i] || '12:00'));
     } else {
-        d.meals = d.meals.slice(0, nxt);
+        // Poista näkyvän (aikajärjestetyn) listan lopusta, ei lisäysjärjestyksessä
+        const removeIds = new Set(byTime(d.meals).slice(nxt).map(m => m.id));
+        d.meals = d.meals.filter(m => !removeIds.has(m.id));
     }
     save(); renderMain();
 }
@@ -815,7 +798,28 @@ function renderMobileDogList() {
     </div>`;
 }
 
-function render() { renderSidebar(); renderMain(); renderDate(); }
+function render() {
+    // Säilytä fokusoitu kenttä ja sen keskeneräinen arvo uudelleenrenderöinnin yli
+    // (esim. kun toisen laitteen tallennus laukaisee snapshot-päivityksen)
+    const ae = document.activeElement;
+    let focus = null;
+    if (ae && ae.id && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) {
+        let pos = null;
+        try { pos = ae.selectionStart; } catch(e) {}
+        focus = { id: ae.id, value: ae.value, pos };
+    }
+    renderSidebar(); renderMain(); renderDate();
+    if (focus) {
+        const el = document.getElementById(focus.id);
+        if (el) {
+            el.value = focus.value;
+            el.focus();
+            if (focus.pos != null) {
+                try { el.setSelectionRange(focus.pos, focus.pos); } catch(e) {}
+            }
+        }
+    }
+}
 
 function renderDate() {
     const el = document.getElementById('hdr-date');
@@ -943,7 +947,7 @@ function renderMain() {
                 <div style="margin-top:16px">
                     <input type="text" id="new-dog-input-mobile" placeholder="Koiran nimi..." maxlength="30"
                         style="width:100%;padding:10px;border-radius:8px;border:1px solid #cbd5e0;font-size:1rem;box-sizing:border-box;margin-bottom:8px">
-                    <button onclick="addDogMobile()" style="width:100%;padding:10px;background:#48bb78;color:white;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">+ Lisää koira</button>
+                    <button onclick="addDog('new-dog-input-mobile')" style="width:100%;padding:10px;background:#48bb78;color:white;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer">+ Lisää koira</button>
                 </div>
             </div>`;
         return;
@@ -1181,7 +1185,7 @@ function tabPicks(d) {
                         <span class="pick-chip food">${h(p)}
                             <button onclick="removeFoodPick(${i})" title="Poista">✕</button>
                         </span>`).join('')
-                    : `<span class="no-picks">Ei pikavalinttoja</span>`}
+                    : `<span class="no-picks">Ei pikavalintoja</span>`}
             </div>
             <div class="add-row">
                 <input type="text" id="fp-input" placeholder="Esim. Vuohenliha" style="flex:1"
@@ -1201,7 +1205,7 @@ function tabPicks(d) {
                         <span class="pick-chip med">${h(p)}
                             <button onclick="removeMedPick(${i})" title="Poista">✕</button>
                         </span>`).join('')
-                    : `<span class="no-picks">Ei pikavalinttoja</span>`}
+                    : `<span class="no-picks">Ei pikavalintoja</span>`}
             </div>
             <div class="add-row">
                 <input type="text" id="mp-input" placeholder="Esim. Sydänlääke" style="flex:1"
@@ -1232,10 +1236,18 @@ document.getElementById('new-dog-input').addEventListener('keydown', e => {
 
 renderDate();
 updateCodeDisplay();
-setInterval(renderDate, 60000);
-initFirebase();
+
+// Päivitä otsikon päivämäärä ja renderöi koko näkymä uusiksi keskiyön ylittyessä,
+// jotta eilisen kuittaukset nollautuvat näkyvistä
+let _curDate = today();
+setInterval(() => {
+    renderDate();
+    if (today() !== _curDate) { _curDate = today(); render(); }
+}, 60000);
 
 // ─── Service Worker ────────────────────
+// Rekisteröidään ennen Firebasen alustusta, ettei alustuksen kaatuminen
+// (esim. offline ilman välimuistia) estä service workeria
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -1243,6 +1255,12 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', e => {
         if (e.data?.type === 'SW_UPDATED') location.reload();
     });
+}
+
+try {
+    initFirebase();
+} catch (e) {
+    toast('Yhteysvirhe: sovellus ei saanut yhteyttä tietokantaan');
 }
 </script>
 </body>
