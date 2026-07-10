@@ -381,7 +381,7 @@
 
 <div class="header">
     <span style="font-size:1.4rem">🐕</span>
-    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v13</span></h1>
+    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v14</span></h1>
     <div class="header-right">
         <span class="header-date" id="hdr-date"></span>
         <div class="code-row">
@@ -687,6 +687,20 @@ function removeFoodFromMeal(mealId, foodIdx) {
     save(); renderMain();
 }
 
+function setMealFoodField(mealId, foodIdx, field, val) {
+    const d = dog(); if (!d) return;
+    const m = d.meals.find(m => m.id === mealId); if (!m) return;
+    const f = m.foods[foodIdx]; if (!f) return;
+    if (field === 'amount') {
+        const num = parseFloat(val);
+        if (isNaN(num)) { toast('Virheellinen määrä'); return; }
+        f.amount = num;
+    } else {
+        f[field] = val;
+    }
+    save();
+}
+
 // ═══════════════════════════════════════
 //  MEDICATIONS (separate schedule)
 // ═══════════════════════════════════════
@@ -717,6 +731,13 @@ function removeMed(idx) {
     const d = dog(); if (!d) return;
     d.meds.splice(idx, 1);
     save(); renderMain();
+}
+
+function setMedField(idx, field, val) {
+    const d = dog(); if (!d) return;
+    const m = d.meds[idx]; if (!m) return;
+    m[field] = val;
+    save();
 }
 
 function confirmMed(idx) {
@@ -1055,8 +1076,16 @@ function tabMeals(d) {
 
             ${(m.foods||[]).map((f,fi) => `
                 <div class="food-row">
-                    <span class="food-row-name">${h(f.name)}</span>
-                    <span class="food-row-amount">${f.amount} ${f.unit}</span>
+                    <select class="food-row-name" style="flex:1;min-width:100px"
+                        onchange="setMealFoodField('${m.id}',${fi},'name',this.value)">
+                        ${d.foodPicks.map(p => `<option value="${h(p)}" ${p===f.name?'selected':''}>${h(p)}</option>`).join('')}
+                        ${!d.foodPicks.includes(f.name) ? `<option value="${h(f.name)}" selected>${h(f.name)}</option>` : ''}
+                    </select>
+                    <input type="number" value="${f.amount}" min="0.1" step="0.1" style="width:80px"
+                        onchange="setMealFoodField('${m.id}',${fi},'amount',this.value)">
+                    <select onchange="setMealFoodField('${m.id}',${fi},'unit',this.value)">
+                        ${['g','dl','ml','kpl','tl','rkl'].map(u => `<option ${u===f.unit?'selected':''}>${u}</option>`).join('')}
+                    </select>
                     <button class="btn btn-danger btn-sm" onclick="removeFoodFromMeal('${m.id}',${fi})">Poista</button>
                 </div>
             `).join('')}
@@ -1093,9 +1122,15 @@ function tabMeds(d, t) {
             const done = m.confirmedDate === t;
             return `
             <div class="med-row" style="margin-bottom:8px;">
-                <span class="med-row-name">💊 <strong>${h(m.name)}</strong></span>
-                <span class="med-row-amount">${h(m.amount)} ${h(m.unit)}</span>
-                <span style="color:#718096;font-size:0.85rem">${m.time || '–'}</span>
+                <span>💊</span>
+                <input type="text" class="med-row-name" value="${h(m.name)}" style="flex:1;min-width:100px;font-weight:600"
+                    onchange="setMedField(${i},'name',this.value)">
+                <input type="text" value="${h(m.amount)}" placeholder="Määrä" style="width:70px"
+                    onchange="setMedField(${i},'amount',this.value)">
+                <select onchange="setMedField(${i},'unit',this.value)">
+                    ${['tabletti','ml','mg','tl','kpl','g','tippa'].map(u => `<option ${u===m.unit?'selected':''}>${u}</option>`).join('')}
+                </select>
+                <input type="time" value="${m.time || ''}" onchange="setMedField(${i},'time',this.value)">
                 <button class="btn btn-danger btn-sm" onclick="removeMed(${i})">Poista</button>
             </div>`;
         }).join('');
