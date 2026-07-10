@@ -381,7 +381,7 @@
 
 <div class="header">
     <span style="font-size:1.4rem">🐕</span>
-    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v14</span></h1>
+    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v15</span></h1>
     <div class="header-right">
         <span class="header-date" id="hdr-date"></span>
         <div class="code-row">
@@ -445,6 +445,9 @@ function nowTime() {
 }
 function dog() {
     return state.dogs.find(d => d.id === state.sel) || null;
+}
+function byTime(arr) {
+    return [...arr].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 }
 
 // ─── Jaettava koodi ─────────────────────
@@ -622,9 +625,9 @@ function confirmMealDv(dogId, mealId) {
     save(); renderMain();
 }
 
-function confirmMedDv(dogId, idx) {
+function confirmMedDv(dogId, medId) {
     const d = state.dogs.find(x => x.id === dogId); if (!d) return;
-    const m = d.meds[idx]; if (!m) return;
+    const m = d.meds.find(x => x.id === medId); if (!m) return;
     const t = today();
     if (m.confirmedDate === t) { m.confirmedDate = null; m.confirmedTime = null; }
     else { m.confirmedDate = t; m.confirmedTime = nowTime(); }
@@ -727,22 +730,22 @@ function addMed() {
     save(); renderMain();
 }
 
-function removeMed(idx) {
+function removeMed(id) {
     const d = dog(); if (!d) return;
-    d.meds.splice(idx, 1);
+    d.meds = d.meds.filter(m => m.id !== id);
     save(); renderMain();
 }
 
-function setMedField(idx, field, val) {
+function setMedField(id, field, val) {
     const d = dog(); if (!d) return;
-    const m = d.meds[idx]; if (!m) return;
+    const m = d.meds.find(m => m.id === id); if (!m) return;
     m[field] = val;
     save();
 }
 
-function confirmMed(idx) {
+function confirmMed(id) {
     const d = dog(); if (!d) return;
-    const m = d.meds[idx]; if (!m) return;
+    const m = d.meds.find(m => m.id === id); if (!m) return;
     const t = today();
     if (m.confirmedDate === t) { m.confirmedDate = null; m.confirmedTime = null; }
     else { m.confirmedDate = t; m.confirmedTime = nowTime(); }
@@ -862,7 +865,7 @@ function renderDayView() {
     for (const d of visible) {
         const items = [];
         for (const m of d.meals) items.push({ type: 'meal', time: m.time || '99:99', data: m });
-        for (let i = 0; i < d.meds.length; i++) items.push({ type: 'med', time: d.meds[i].time || '99:99', data: d.meds[i], idx: i });
+        for (const m of d.meds) items.push({ type: 'med', time: m.time || '99:99', data: m });
         items.sort((a, b) => a.time.localeCompare(b.time));
 
         out += `
@@ -903,7 +906,7 @@ function renderDayView() {
                         <span class="item-time" style="color:#6b46c1">${m.time || '--:--'}</span>
                         <span class="item-title">💊 ${h(m.name)}</span>
                         <button class="confirm-btn ${done ? 'done' : 'pending'}" style="${done ? 'background:#faf5ff;color:#553c9a;border-color:#d6bcfa' : 'background:#faf5ff;color:#6b46c1;border-color:#d6bcfa'}"
-                            onclick="confirmMedDv('${d.id}',${item.idx})">
+                            onclick="confirmMedDv('${d.id}','${m.id}')">
                             ${done ? `✓ Kuitattu ${m.confirmedTime || ''}` : '○ Kuittaa'}
                         </button>
                     </div>
@@ -993,7 +996,7 @@ function tabToday(d, t) {
     if (!d.meals.length) {
         out += `<div class="empty">Ei aterioita. Lisää ateriat <strong>Ateriat</strong>-välilehdellä.</div>`;
     } else {
-        out += d.meals.map(m => {
+        out += byTime(d.meals).map(m => {
             const done = m.confirmedDate === t;
             const hasFoods = m.foods?.length;
             return `
@@ -1015,7 +1018,7 @@ function tabToday(d, t) {
     // Meds
     if (d.meds.length) {
         out += `<div class="section-label" style="margin-top:24px">Lääkitykset</div>`;
-        out += d.meds.map((m, i) => {
+        out += byTime(d.meds).map(m => {
             const done = m.confirmedDate === t;
             return `
             <div class="card today-card ${done ? 'done' : 'pending'}" style="border-left-color:${done ? '#b794f4' : '#d6bcfa'}">
@@ -1023,7 +1026,7 @@ function tabToday(d, t) {
                     <span class="item-time" style="color:#6b46c1">${m.time || '--:--'}</span>
                     <span class="item-title">💊 ${h(m.name)}</span>
                     <button class="confirm-btn ${done ? 'done' : 'pending'}" style="${done ? 'background:#faf5ff;color:#553c9a;border-color:#d6bcfa' : 'background:#faf5ff;color:#6b46c1;border-color:#d6bcfa'}"
-                        onclick="confirmMed(${i})">
+                        onclick="confirmMed('${m.id}')">
                         ${done ? `✓ Kuitattu ${m.confirmedTime||''}` : '○ Kuittaa'}
                     </button>
                 </div>
@@ -1061,7 +1064,7 @@ function tabMeals(d) {
     const foodOpts = d.foodPicks.map(p => `<option value="${h(p)}">${h(p)}</option>`).join('');
     const noFoodPicks = !d.foodPicks.length;
 
-    out += d.meals.map((m, mi) => `
+    out += byTime(d.meals).map((m, mi) => `
         <div class="meal-block">
             <div class="meal-block-header">
                 <div class="meal-num">${mi+1}</div>
@@ -1118,20 +1121,19 @@ function tabMeds(d, t) {
     if (!d.meds.length) {
         out += `<div class="empty" style="padding:16px 0">Ei lääkityksiä lisätty</div>`;
     } else {
-        out += d.meds.map((m, i) => {
-            const done = m.confirmedDate === t;
+        out += byTime(d.meds).map(m => {
             return `
             <div class="med-row" style="margin-bottom:8px;">
                 <span>💊</span>
                 <input type="text" class="med-row-name" value="${h(m.name)}" style="flex:1;min-width:100px;font-weight:600"
-                    onchange="setMedField(${i},'name',this.value)">
+                    onchange="setMedField('${m.id}','name',this.value)">
                 <input type="text" value="${h(m.amount)}" placeholder="Määrä" style="width:70px"
-                    onchange="setMedField(${i},'amount',this.value)">
-                <select onchange="setMedField(${i},'unit',this.value)">
+                    onchange="setMedField('${m.id}','amount',this.value)">
+                <select onchange="setMedField('${m.id}','unit',this.value)">
                     ${['tabletti','ml','mg','tl','kpl','g','tippa'].map(u => `<option ${u===m.unit?'selected':''}>${u}</option>`).join('')}
                 </select>
-                <input type="time" value="${m.time || ''}" onchange="setMedField(${i},'time',this.value)">
-                <button class="btn btn-danger btn-sm" onclick="removeMed(${i})">Poista</button>
+                <input type="time" value="${m.time || ''}" onchange="setMedField('${m.id}','time',this.value)">
+                <button class="btn btn-danger btn-sm" onclick="removeMed('${m.id}')">Poista</button>
             </div>`;
         }).join('');
     }
