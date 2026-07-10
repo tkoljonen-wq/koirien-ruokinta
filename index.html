@@ -381,7 +381,7 @@
 
 <div class="header">
     <span style="font-size:1.4rem">🐕</span>
-    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v12</span></h1>
+    <h1>Koirien Ruokinta &amp; Lääkitys <span style="font-size:0.65rem;font-weight:400;opacity:0.55;letter-spacing:0">v13</span></h1>
     <div class="header-right">
         <span class="header-date" id="hdr-date"></span>
         <div class="code-row">
@@ -516,6 +516,7 @@ function startListener() {
 function initFirebase() {
     firebase.initializeApp(FIREBASE_CONFIG);
     db = firebase.firestore();
+    db.enablePersistence().catch(() => {});
     startListener();
 }
 
@@ -1181,7 +1182,7 @@ function tabPicks(d) {
 function h(s) {
     return String(s ?? '')
         .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ═══════════════════════════════════════
